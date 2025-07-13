@@ -4,7 +4,7 @@ import os
 import openai
 import requests
 
-app = Flask(__name__)
+app = Flask(__name__, static_folder="static")
 
 # === Konfiguration ===
 openai.api_key = "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"
