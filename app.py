@@ -16,7 +16,7 @@ forward_number = "+4915737737721"
 @app.route("/voice", methods=['POST'])
 def voice():
     response = VoiceResponse()
-    response.play(url="https://thinkable-voicebot.onrender.com/static/ElevenLabs_Begrüßung.mp3")
+    response.play(url="https://thinkable-voicebot.onrender.com/static/greeting.mp3")
     gather = Gather(input='speech', timeout=5, speechTimeout='auto', action='/gather')
     gather.say("Was kann ich für dich tun?")
     response.append(gather)
