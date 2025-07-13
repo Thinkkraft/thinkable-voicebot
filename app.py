@@ -149,7 +149,9 @@ def voice_webhook():
 
     twiml_response = f"""<?xml version="1.0" encoding="UTF-8"?>
 <Response>
-    <Play>https://thinkable-voicebot.onrender.com{audio_path}</Play>
+    <Gather input="speech" action="/webhook/voice" method="POST">
+        <Play>https://thinkable-voicebot.onrender.com{audio_path}</Play>
+    </Gather>
 </Response>"""
 
     response = make_response(twiml_response)
