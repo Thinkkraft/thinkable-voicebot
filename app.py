@@ -105,3 +105,38 @@ def serve_audio(filename):
 
 if __name__ == "__main__":
     app.run(debug=True)
+
+@app.route("/webhook/voice", methods=["POST"])
+def voice_webhook():
+    # Hol dir den gesprochenen Text (von Twilio übergeben)
+    user_input = request.form.get("SpeechResult", "").strip()
+
+    print(f"📞 Eingehender Anruftext: {user_input}")
+
+    # Wenn kein Text erkannt wurde
+    if not user_input:
+        fallback_text = "Ich konnte dich leider nicht verstehen. Kannst du das bitte wiederholen?"
+        audio_path = text_to_speech(fallback_text)
+    else:
+        # GPT-Antwort erzeugen
+        gpt_response = ask_openai(user_input)
+        print(f"🤖 GPT-Antwort: {gpt_response}")
+
+        # Antwort in Sprache umwandeln
+        audio_path = text_to_speech(gpt_response)
+
+    # Wenn ElevenLabs-Output fehlgeschlagen ist
+    if not audio_path:
+        error_text = "Tut mir leid, ich hatte ein Problem mit meiner Stimme."
+        audio_path = text_to_speech(error_text)
+
+    # Erstelle XML-Antwort für Twilio
+    twiml_response = f"""<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+    <Play>https://thinkable-voicebot.onrender.com{audio_path}</Play>
+</Response>"""
+
+    # Sende XML zurück an Twilio
+    response = make_response(twiml_response)
+    response.headers["Content-Type"] = "text/xml"
+    return response
