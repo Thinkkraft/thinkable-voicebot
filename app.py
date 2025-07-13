@@ -1,100 +1,54 @@
-from flask import Flask, request, Response
-import openai
-import os
-from dotenv import load_dotenv
+from flask import Flask, request, redirect
+from twilio.twiml.voice_response import VoiceResponse, Gather
 import logging
-
-load_dotenv()
 
 app = Flask(__name__)
 
-openai.api_key = os.getenv("OPENAI_API_KEY")
+# Logging aktivieren (für Debugging)
+logging.basicConfig(level=logging.INFO)
 
-# Logging konfigurieren
-logging.basicConfig(level=logging.INFO, filename='calls.log', format='%(asctime)s %(message)s')
-
-# Gesprächsverlauf
-convo_history = []
-
-@app.route("/webhook/voice", methods=["POST"])
+@app.route("/voice", methods=["GET", "POST"])
 def voice():
-    twiml_response = """<?xml version="1.0" encoding="UTF-8"?>
-<Response>
-    <Say voice="Polly.Vicki">Hallo, ich bin Thinkable – die KI-Ansprechpartnerin von Thinkkraft. Wie kann ich dir helfen?</Say>
-    <Gather input="speech" action="/webhook/process" method="POST" timeout="5" />
-    <Say>Ich konnte dich leider nicht verstehen. Bitte versuche es noch einmal.</Say>
-    <Redirect>/webhook/voice</Redirect>
-</Response>"""
-    return Response(twiml_response, mimetype="text/xml")
+    response = VoiceResponse()
 
+    # Spracheingabe vom User holen
+    speech_result = request.values.get('SpeechResult', '').lower()
+    logging.info(f"Nutzer sagte: {speech_result}")
 
-@app.route("/webhook/process", methods=["POST"])
-def process():
-    user_input = request.form.get("SpeechResult", "").strip()
-    logging.info(f"User said: {user_input}")
-
-    if not user_input:
-        return redirect_response()
-
-    # Wenn Termininteresse erkannt wird
-    if any(keyword in user_input.lower() for keyword in ["democall", "demo-call", "demogespräch", "termin", "gründer", "founder"]):
-        return Response("""<?xml version="1.0" encoding="UTF-8"?>
-<Response>
-    <Say>Willst du, dass ich dich mit unserem Gründer Herrn Schwalbe verbinde?</Say>
-    <Gather input="speech" action="/webhook/transfer" method="POST" timeout="5" />
-    <Say>Okay, dann nicht. Ich bin trotzdem für dich da.</Say>
-    <Redirect>/webhook/voice</Redirect>
-</Response>""", mimetype="text/xml")
-
-    # GPT-Antwort generieren
-    convo_history.append({"role": "user", "content": user_input})
-    response = openai.ChatCompletion.create(
-        model="gpt-4",
-        messages=[
-            {"role": "system", "content": "Du bist Thinkable, die KI-Ansprechpartnerin von Thinkkraft. Sei hilfreich, freundlich, fachlich kompetent und unterstützend. Verweise auf das Video, wenn nötig."},
-            *convo_history
-        ]
-    )
-    ai_reply = response["choices"][0]["message"]["content"]
-    convo_history.append({"role": "assistant", "content": ai_reply})
-
-    # Antwort zurückgeben
-    twiml_response = f"""<?xml version="1.0" encoding="UTF-8"?>
-<Response>
-    <Say>{ai_reply}</Say>
-    <Redirect>/webhook/voice</Redirect>
-</Response>"""
-    return Response(twiml_response, mimetype="text/xml")
-
-
-@app.route("/webhook/transfer", methods=["POST"])
-def transfer():
-    user_reply = request.form.get("SpeechResult", "").lower()
-    logging.info(f"Transfer confirmation: {user_reply}")
-
-    if "ja" in user_reply or "mach" in user_reply:
-        twiml_response = """<?xml version="1.0" encoding="UTF-8"?>
-<Response>
-    <Say>Ich verbinde dich jetzt mit meinem Boss, Herrn Schwalbe. Einen Moment bitte.</Say>
-    <Dial>+4915737737721</Dial>
-</Response>"""
-        return Response(twiml_response, mimetype="text/xml")
+    # Wenn bereits etwas gesagt wurde
+    if speech_result:
+        if any(kw in speech_result for kw in ["termin", "demo", "gründer", "founder", "meeting"]):
+            gather = Gather(input='speech', action='/confirm', timeout=3)
+            gather.say("Möchtest du mit meinem Boss Herrn Schwalbe verbunden werden?")
+            response.append(gather)
+            response.redirect('/voice')  # Wenn keine Antwort kommt
+        else:
+            response.say("Okay, danke für dein Interesse. Wenn du mehr erfahren willst, schreib uns gerne eine Nachricht oder buche dir einen Termin.")
+            response.hangup()
     else:
-        return redirect_response()
+        # Erste Begrüßung
+        gather = Gather(input='speech', action='/voice', timeout=3)
+        gather.say("Hey! Ich bin Thinkable von Thinkkraft. Wie kann ich dir helfen?")
+        response.append(gather)
+        response.redirect('/voice')
 
+    return str(response)
 
-def redirect_response():
-    return Response("""<?xml version="1.0" encoding="UTF-8"?>
-<Response>
-    <Say>Ich konnte dich nicht verstehen. Lass es uns noch einmal versuchen.</Say>
-    <Redirect>/webhook/voice</Redirect>
-</Response>""", mimetype="text/xml")
+@app.route("/confirm", methods=["GET", "POST"])
+def confirm():
+    response = VoiceResponse()
+    speech_result = request.values.get('SpeechResult', '').lower()
+    logging.info(f"Bestätigung erkannt: {speech_result}")
 
+    if any(kw in speech_result for kw in ["ja", "klar", "bitte", "mach das", "unbedingt"]):
+        response.say("Ich verbinde dich jetzt mit meinem Boss Herrn Schwalbe. Einen Moment bitte.")
+        response.dial("+4915737737721")
+    else:
+        response.say("Alles klar. Dann wünsche ich dir noch einen erfolgreichen Tag!")
+        response.hangup()
+
+    return str(response)
 
 @app.route("/", methods=["GET"])
 def home():
-    return "Thinkable Voice Webhook läuft ✅"
-
-
-if __name__ == "__main__":
-    app.run(debug=True)
+    return "Thinkable Voicebot läuft 🦾", 200
